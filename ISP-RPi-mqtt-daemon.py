@@ -1439,6 +1439,7 @@ detectorValues = OrderedDict([
         title="Temperature",
         topic_category="sensor",
         device_class="temperature",
+        state_class="measurement",
         no_title_prefix="yes",
         unit="°C",
         icon='mdi:thermometer',
@@ -1447,6 +1448,7 @@ detectorValues = OrderedDict([
     (K_LD_FS_USED, dict(
         title="Disk Used",
         topic_category="sensor",
+        state_class="measurement",
         no_title_prefix="yes",
         unit="%",
         icon='mdi:sd',
@@ -1455,6 +1457,7 @@ detectorValues = OrderedDict([
     (K_LD_CPU_USE, dict(
         title="CPU Use",
         topic_category="sensor",
+        state_class="measurement",
         no_title_prefix="yes",
         unit="%",
         icon=cpu_use_icon,
@@ -1463,6 +1466,7 @@ detectorValues = OrderedDict([
     (K_LD_MEM_USED, dict(
         title="Memory Used",
         topic_category="sensor",
+        state_class="measurement",
         no_title_prefix="yes",
         json_value="mem_used_prcnt",
         unit="%",
@@ -1633,6 +1637,9 @@ K_RPI_DRV_DEVICE = "device"
 K_RPI_DRV_NFS = "device-nfs"
 K_RPI_DVC_IP = "ip"
 K_RPI_DVC_PATH = "dvc"
+# new block devices dictionary
+K_RPI_BLK_DEVICES = "block_devices"
+K_RPI_BLK_DEV_TEMP = "temperature_c"
 # new memory dictionary
 K_RPI_MEMORY = "memory"
 K_RPI_MEM_TOTAL = "size_mb"
@@ -1689,6 +1696,10 @@ def send_status(timestamp, nothing):
 
     rpiData[K_RPI_NETWORK] = getNetworkDictionary()
 
+    rpiBlockDevices = getBlockDevicesDictionary()
+    if len(rpiBlockDevices) > 0:
+        rpiData[K_RPI_BLK_DEVICES] = rpiBlockDevices
+
     rpiDrives = getDrivesDictionary()
     if len(rpiDrives) > 0:
         rpiData[K_RPI_DRIVES] = rpiDrives
@@ -1727,10 +1738,25 @@ def forceSingleDigit(temperature):
     tempInterp = '{:.1f}'.format(temperature)
     return float(tempInterp)
 
+def getBlockDevicesDictionary():
+    rpiDevices = OrderedDict()
+
+    smartctlHelper = os.path.join(os.path.dirname(__file__), 'smartctl-helper')
+    stdout, stderr, returncode = invoke_shell_cmd("sudo " + smartctlHelper)
+    if returncode != 0:
+        print_line('Could not query SMART data: {}'.format(stderr), warning=True)
+        return rpiDevices
+
+    for device in stdout.decode('utf-8').splitlines():
+        [ name, temp ] = device.split(':')
+        if len(temp) > 0:
+            rpiDevices[name] = { K_RPI_BLK_DEV_TEMP: float(temp) }
+    return rpiDevices
 
 def getDrivesDictionary():
     global rpi_filesystem
     rpiDrives = OrderedDict()
+    
 
     # tuple { total blocks, used%, mountPoint, device }
     for driveTuple in rpi_filesystem:
